@@ -82,7 +82,41 @@ class FusionMLP(nn.Module):
     def __init__(self,classes = 128, heads = 64, expression_dim = 128, audio_dim = 128):
         super(FusionMLP, self).__init__()
         self.classes = classes
-        super.heads = heads
+        self.heads = heads
+
+        latent_dim = 256;
+        self.mlp=torch.nn.Sequential(
+            torch.nn.Linear(expression_dim+audio_dim, latent_dim),
+            torch.nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            torch.nn.Linear(latent_dim, latent_dim),
+            torch.nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            torch.nn.Linear(latent_dim, heads * classes)
+        )
+    def forward(self, expression_code, audio_code):
+        x = torch.cat([expression_code,audio_code],dim=-1)
+        x = self.mlp(x).view(x.shape[0],x.shape[1],self.heads,self.classes)
+        x = F.log_softmax(x,dim=-1)
+        return x
+class MultimodalEncoder(nn.Module):
+    def __init__(self,
+                 classes = 128,
+                 heads = 64,
+                 expression_dim = 128,
+                 audio_dim = 128,
+                 n_blendshapes=52,
+                 ):
+        super(MultimodalEncoder,self).__init__()
+        self.audio_encoder = AudioEncoder(audio_dim)
+        self.expression_encoder = ExpressionEncoder(expression_dim,n_blendshapes)
+        self.fusion_model = FusionMLP(classes,heads,expression_dim,audio_dim)
+    def forward(self,audio,blendshape):
+        codes_audio = self.audio_encoder(audio)
+        codes_blendshape = self.expression_encoder(blendshape)
+        x = self.fusion_model(codes_blendshape,codes_audio)
+        return x, codes_blendshape, codes_audio
+
+
+
 
 
 
