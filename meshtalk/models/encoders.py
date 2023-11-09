@@ -69,7 +69,7 @@ class ExpressionEncoder(nn.Module):
         """
 
         x = blendshape.sub(0.5)
-        x = x.mul(2)
+        x = x.mul(2.0)
 
         for layer in self.layers:
             x = F.leaky_relu(layer(x),.2)
