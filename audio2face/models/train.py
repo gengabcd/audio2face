@@ -31,9 +31,11 @@ class Dataset_HDTF(Dataset):
         # 根据索引返回数据
         # data = self.preprocess(self.data[index]) # 如果需要预处理数据的话
         audio, label = self.data[index]
-        label = label[:audio.shape[0]]
+        audio = audio[:label.shape[0]]
+        print(audio.shape)
+        print(label.shape)
 
-        return torch.tensor(label,dtype=torch.float), torch.tensor(label, dtype=torch.float)
+        return (torch.tensor(label,dtype=torch.float), torch.tensor(label, dtype=torch.float))
 
     def __len__(self):
         # 返回数据的长度
@@ -41,8 +43,6 @@ class Dataset_HDTF(Dataset):
 
     # 如果不是直接传入数据data，这里定义一个加载数据的方法
     def __load_data__(self, audio_path, blendshape_path):
-        # 假如从 csv_paths 中加载数据，可能要遍历文件夹读取文件等，这里忽略
-        # 可以拆分训练和验证集并返回train_X, train_Y, valid_X, valid_Y
         data = []
         for root, dirs, files in os.walk(audio_path):
             for file in files:
@@ -52,6 +52,9 @@ class Dataset_HDTF(Dataset):
                 blendshape_data = np.load(blendshape_file)
                 data.append((wav_data,blendshape_data))
                 print("load " + file)
+                print("wavsize: " + str(wav_data.shape))
+                print("blendshapesize: " + str(blendshape_data.shape))
+
         if self.flag == "train":
             return data[:int(len(data)*0.8)]
         else:
@@ -90,6 +93,8 @@ def train(epochs,
         train_epoch_loss = []
         acc, nums = 0,0
         for idx, (audio, label) in enumerate(tqdm(train_dataloader)):
+            print(audio.shape)
+            print(label.shape)
             audio = audio.to(args.device)
             label = label.to(args.device)
             outputs = model(audio)
