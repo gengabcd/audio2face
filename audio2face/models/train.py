@@ -31,6 +31,7 @@ class Dataset_HDTF(Dataset):
         # 根据索引返回数据
         # data = self.preprocess(self.data[index]) # 如果需要预处理数据的话
         audio, label = self.data[index]
+        label = label[:audio.shape[0]]
 
         return torch.tensor(label,dtype=torch.float), torch.tensor(label, dtype=torch.float)
 
@@ -49,7 +50,8 @@ class Dataset_HDTF(Dataset):
                 blendshape_file = os.path.join(blendshape_path,file)
                 wav_data = np.load(wav_file)
                 blendshape_data = np.load(blendshape_file)
-                data.append(wav_data,blendshape_data)
+                data.append((wav_data,blendshape_data))
+                print("load " + file)
         if self.flag == "train":
             return data[:int(len(data)*0.8)]
         else:
@@ -83,6 +85,7 @@ def train(epochs,
     test_acc = []
 
     for epoch in range(epochs):
+        print("epoch: " + str(epoch))
         model.train()
         train_epoch_loss = []
         acc, nums = 0,0
