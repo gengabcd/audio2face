@@ -44,14 +44,14 @@ class NvidiaModel(nn.Module):
         x = self.dropout(x)
         x = self.linear2(x)
         return x
-def nvidia_loss(output, label):
-    loss_function = torch.nn.MSELoss(reduce = True, size_average=True)
-    loss_position = loss_function(output, label)
-    output_ = torch.diff(output,dim=0)
-    label_ = torch.diff(label,dim=0)
-    loss_motion = loss_function(output_,label_)
-    loss = loss_position + loss_motion
-    return loss
+    def loss(self, output, label):
+        loss_function = torch.nn.MSELoss(reduce = True, size_average=True)
+        loss_position = loss_function(output, label)
+        output_ = torch.diff(output,dim=0)
+        label_ = torch.diff(label,dim=0)
+        loss_motion = loss_function(output_,label_)
+        loss = loss_position + loss_motion
+        return loss
 
 
 

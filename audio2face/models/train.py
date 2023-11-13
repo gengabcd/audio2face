@@ -2,19 +2,22 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 import torch.nn.functional as F
-from audio2face import nvidia_loss
+from audio2face import NvidiaModel
 import os
 from tqdm import tqdm
+import json
 class Args:
     def __init__(self):
         self.epochs = 200
         self.batch_size = 8
         self.lr = 0.001
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.audio_path = ""
-        self.blendshape_path = ""
-        self.check_point_saved_path = ""
+        self.audio_path = "../dataset/audio"
+        self.blendshape_path = "../../data/HDTF/blendshape"
+        self.checkpoint_saved_path = "../checkpoint",
+        self.res_path = "../res/res.json"
 args = Args()
+
 class Dataset_HDTF(Dataset):
     def __init__(self, audio_path, blendshape_path,flag='train'):
         assert flag in ['train', 'test']
@@ -60,13 +63,12 @@ class Dataset_HDTF(Dataset):
 
 def train(epochs,
           batch_size,
-          lr,
           model,
           checkpoint_save_path,
-          loss,
           optimizer,
           audio_path,
-          blendshape_path
+          blendshape_path,
+          res_path,
           ):
 
     train_dataset = Dataset_HDTF(flag="train",audio_path=audio_path, blendshape_path=blendshape_path)
@@ -89,7 +91,8 @@ def train(epochs,
             label = label.to(args.device)
             outputs = model(audio)
             optimizer.zero_grad()
-            loss = nvidia_loss(outputs,label)
+            loss = model.loss(outputs,label)
+            loss.backward()
             optimizer.step()
             train_epoch_loss.append(loss.item())
             acc += torch.sum(torch.equal(outputs,label))
@@ -97,6 +100,11 @@ def train(epochs,
         train_epochs_loss.append(np.average(train_epoch_loss))
         train_acc.append(100.0*acc/nums)
         print("train acc = {:.3f}%, loss = {}".format(100 * acc / nums, np.average(train_epoch_loss)))
+        if epoch % 10 == 0:
+            dict_path = checkpoint_save_path + "/model_epochs_" + str(epoch//10) + ",pt"
+            torch.save(model.state_dict(), dict_path)
+            print(dict_path + " saved")
+
         with torch.no_grad():
             model.eval()
             test_epoch_loss = []
@@ -105,7 +113,7 @@ def train(epochs,
                 audio = audio.to(args.device)
                 label = label.to(args.device)
                 outputs = model(audio)
-                loss = nvidia_loss(outputs, label)
+                loss = model.loss(outputs, label)
                 test_epoch_loss.append(loss.item())
                 acc += torch.sum(torch.equal(outputs,label))
                 nums += label.size()[0]
@@ -114,6 +122,36 @@ def train(epochs,
 
             print("epoch = {}, test acc = {:.2f}%, loss = {}".format(epoch, 100 * acc / nums,
                                                                       np.average(test_epoch_loss)))
+
+    res = {
+        "train_epochs_loss":train_epochs_loss,
+        "test_epochs_loss":test_epochs_loss,
+        "train_acc":train_acc,
+        "test_acc":test_acc
+    }
+    with open(res_path, 'w') as f:
+        json.dump(res,f)
+
+if __name__ == "__main__":
+    model = NvidiaModel()
+    optimizer = torch.optim.Adam(model.parameters(),lr=args.lr)
+    # def train(epochs,
+    #           batch_size,
+    #           model,
+    #           checkpoint_save_path,
+    #           optimizer,
+    #           audio_path,
+    #           blendshape_path,
+    #           ):
+    train(epochs=args.epochs,
+          batch_size=args.batch_size,
+          model=model,
+          checkpoint_save_path=args.checkpoint_saved_path,
+          optimizer=optimizer,
+          audio_path=args.audio_path,
+          blendshape_path=args.blendshape_path,
+          res_path=args.res_path
+          )
 
 
 
