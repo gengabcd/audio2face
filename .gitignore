@@ -140,3 +140,5 @@ cython_debug/
 data
 
 audio2face/dataset
+
+audio2face/checkpoint

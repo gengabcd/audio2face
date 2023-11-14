@@ -6,21 +6,21 @@ class NvidiaModel(nn.Module):
     def __init__(self, output_dim = 52):
         super(NvidiaModel, self).__init__()
         self.output_dim = 52
-        self.analysis_convs = [
+        self.analysis_convs = torch.nn.ModuleList([
             torch.nn.Conv2d(in_channels=1, out_channels=72, kernel_size=(1, 3), stride=(1, 2), padding=(0, 1)),
             torch.nn.Conv2d(in_channels=72, out_channels=108, kernel_size=(1, 3), stride=(1,2),padding=(0,1)),
             torch.nn.Conv2d(in_channels=108, out_channels=162, kernel_size=(1, 3), stride=(1, 2), padding=(0, 1)),
             torch.nn.Conv2d(in_channels=162, out_channels=243, kernel_size=(1, 3), stride=(1, 2), padding=(0, 1)),
             torch.nn.Conv2d(in_channels=243, out_channels=256, kernel_size=(1, 3), stride=(1, 2), padding=(0, 1))
-        ]
+        ])
 
-        self.articulation_convs = [
+        self.articulation_convs = torch.nn.ModuleList([
             torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)),
             torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)),
             torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)),
             torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)),
             torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(4, 1), stride=(4, 1), padding=(1, 0)),
-        ]
+        ])
         self.linear1 = torch.nn.Linear(256,150)
         self.dropout = torch.nn.Dropout(0.2)
         self.linear2 = torch.nn.Linear(150,self.output_dim)
@@ -31,11 +31,11 @@ class NvidiaModel(nn.Module):
     ## x : (1 x ??? , 32, 64, 1)
     def forward(self, x):
         x = x.view(x.shape[1], x.shape[4], x.shape[3], -1)
-        for layer in self.analysis_convs:
+        for i,layer in enumerate(self.analysis_convs):
             # print(x.shape)
             x = layer(x)
             x = F.relu(x)
-        for layer in self.articulation_convs:
+        for i,layer in enumerate(self.articulation_convs):
             # print(x.shape)
             x = layer(x)
             x = F.relu(x)

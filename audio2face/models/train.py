@@ -7,6 +7,18 @@ import os
 from tqdm import tqdm
 import json
 class Args:
+# class Args:
+#     def __init__(self):
+#         self.epochs = 51
+#         self.batch_size = 1
+#         self.lr = 0.001
+#         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#         self.audio_path = "../../../dataset_HPC/audio"
+#         self.blendshape_path = "../../../HDTF/blendshape"
+#         self.checkpoint_saved_path = "../checkpoint"
+#         self.res_path = "../res/res.json"
+#
+# args = Args()
     def __init__(self):
         self.epochs = 11
         self.batch_size = 1
@@ -47,13 +59,13 @@ class Dataset_HDTF(Dataset):
 
     # 如果不是直接传入数据data，这里定义一个加载数据的方法
     def __load_data__(self, audio_path, blendshape_path):
-        cnt = 10
+        # cnt = 10
         data = []
         for root, dirs, files in os.walk(audio_path):
             for file in files:
-                cnt -= 1
-                if cnt == 0:
-                    break
+                # cnt -= 1
+                # if cnt == 0:
+                #     break
                 wav_file = os.path.join(root, file)
                 blendshape_file = os.path.join(blendshape_path,file)
                 wav_data = np.load(wav_file)
@@ -109,7 +121,7 @@ def train(epochs,
             outputs = model(audio)
             optimizer.zero_grad()
             loss = model.loss(outputs,label)
-            print("loss: " + str(loss))
+            # print("loss: " + str(loss))
             loss.backward()
             optimizer.step()
             train_epoch_loss.append(loss.item())
@@ -121,7 +133,7 @@ def train(epochs,
         print("loss = {}".format(np.average(train_epoch_loss)))
         if epoch % 10 == 0:
             it = epoch // 10
-            dict_path = f"{checkpoint_save_path}/model_epochs_{it}.pt"
+            dict_path = f"{checkpoint_save_path}/model_epochs_{it}.pth"
             # dict_path = checkpoint_save_path + "/model_epochs_" + str(it) + ".pt"
             torch.save(model.state_dict(), dict_path)
             print(dict_path + " saved")
@@ -129,7 +141,7 @@ def train(epochs,
         with torch.no_grad():
             model.eval()
             test_epoch_loss = []
-            acc, nums = 0, 0
+            # acc, nums = 0, 0
             for idx, (audio, label) in enumerate(tqdm(test_dataloader)):
                 audio = audio.to(args.device)
                 label = label.to(args.device)
@@ -156,6 +168,7 @@ def train(epochs,
 
 if __name__ == "__main__":
     model = NvidiaModel()
+    model = model.to(args.device)
     optimizer = torch.optim.Adam(model.parameters(),lr=args.lr)
     # def train(epochs,
     #           batch_size,
