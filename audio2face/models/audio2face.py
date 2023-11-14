@@ -28,21 +28,22 @@ class NvidiaModel(nn.Module):
 
 
     ##
-    ## x : (??? , 32, 64, 1)
+    ## x : (1 x ??? , 32, 64, 1)
     def forward(self, x):
-        x = x.view(x.shape[0], x.shape[3], x.shape[2], -1)
+        x = x.view(x.shape[1], x.shape[4], x.shape[3], -1)
         for layer in self.analysis_convs:
-            print(x.shape)
+            # print(x.shape)
             x = layer(x)
             x = F.relu(x)
         for layer in self.articulation_convs:
-            print(x.shape)
+            # print(x.shape)
             x = layer(x)
             x = F.relu(x)
         x = x.view(x.shape[0],-1)
         x = self.linear1(x)
         x = self.dropout(x)
         x = self.linear2(x)
+        x = torch.clamp(x,min=-1.0,max=1.0)
         return x
     def loss(self, output, label):
         loss_function = torch.nn.MSELoss(reduce = True, size_average=True)

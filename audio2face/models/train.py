@@ -8,13 +8,13 @@ from tqdm import tqdm
 import json
 class Args:
     def __init__(self):
-        self.epochs = 200
-        self.batch_size = 8
+        self.epochs = 11
+        self.batch_size = 1
         self.lr = 0.001
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.audio_path = "../dataset/audio"
         self.blendshape_path = "../../data/HDTF/blendshape"
-        self.checkpoint_saved_path = "../checkpoint",
+        self.checkpoint_saved_path = "../checkpoint"
         self.res_path = "../res/res.json"
 args = Args()
 
@@ -32,10 +32,14 @@ class Dataset_HDTF(Dataset):
         # data = self.preprocess(self.data[index]) # 如果需要预处理数据的话
         audio, label = self.data[index]
         audio = audio[:label.shape[0]]
-        print(audio.shape)
-        print(label.shape)
+        # print("getitem audio_size: "+ str(audio.shape))
+        # print("getitem audio_size: "+ str(label.shape))
+        audio = torch.tensor(audio,dtype=torch.float)
+        label = torch.tensor(label, dtype=torch.float)
+        # print("getitem taudio_size: " + str(audio.shape))
+        # print("getitem taudio_size: " + str(label.shape))
 
-        return (torch.tensor(label,dtype=torch.float), torch.tensor(label, dtype=torch.float))
+        return audio,label
 
     def __len__(self):
         # 返回数据的长度
@@ -43,17 +47,21 @@ class Dataset_HDTF(Dataset):
 
     # 如果不是直接传入数据data，这里定义一个加载数据的方法
     def __load_data__(self, audio_path, blendshape_path):
+        cnt = 10
         data = []
         for root, dirs, files in os.walk(audio_path):
             for file in files:
+                cnt -= 1
+                if cnt == 0:
+                    break
                 wav_file = os.path.join(root, file)
                 blendshape_file = os.path.join(blendshape_path,file)
                 wav_data = np.load(wav_file)
                 blendshape_data = np.load(blendshape_file)
                 data.append((wav_data,blendshape_data))
-                print("load " + file)
-                print("wavsize: " + str(wav_data.shape))
-                print("blendshapesize: " + str(blendshape_data.shape))
+                # print("load " + file)
+                # print("wavsize: " + str(wav_data.shape))
+                # print("blendshapesize: " + str(blendshape_data.shape))
 
         if self.flag == "train":
             return data[:int(len(data)*0.8)]
@@ -84,32 +92,37 @@ def train(epochs,
 
     train_epochs_loss = []
     test_epochs_loss = []
-    train_acc = []
-    test_acc = []
+    # train_acc = []
+    # test_acc = []
 
     for epoch in range(epochs):
         print("epoch: " + str(epoch))
         model.train()
         train_epoch_loss = []
-        acc, nums = 0,0
+        # acc, nums = 0,0
         for idx, (audio, label) in enumerate(tqdm(train_dataloader)):
-            print(audio.shape)
-            print(label.shape)
+            # print("train audio:" + str(audio.shape))
+            # print("train label:" + str(label.shape))
             audio = audio.to(args.device)
             label = label.to(args.device)
+            label = label.view(label.shape[1], -1)
             outputs = model(audio)
             optimizer.zero_grad()
             loss = model.loss(outputs,label)
+            print("loss: " + str(loss))
             loss.backward()
             optimizer.step()
             train_epoch_loss.append(loss.item())
-            acc += torch.sum(torch.equal(outputs,label))
-            nums += label.size()[0]
+            # sp = (outputs == label).sum()
+            # acc += torch.sum(torch.eq(outputs,label))
+            # nums += label.size()[0]*label.size()[1]
         train_epochs_loss.append(np.average(train_epoch_loss))
-        train_acc.append(100.0*acc/nums)
-        print("train acc = {:.3f}%, loss = {}".format(100 * acc / nums, np.average(train_epoch_loss)))
+        # train_acc.append(100.0*acc/nums)
+        print("loss = {}".format(np.average(train_epoch_loss)))
         if epoch % 10 == 0:
-            dict_path = checkpoint_save_path + "/model_epochs_" + str(epoch//10) + ",pt"
+            it = epoch // 10
+            dict_path = f"{checkpoint_save_path}/model_epochs_{it}.pt"
+            # dict_path = checkpoint_save_path + "/model_epochs_" + str(it) + ".pt"
             torch.save(model.state_dict(), dict_path)
             print(dict_path + " saved")
 
@@ -120,22 +133,23 @@ def train(epochs,
             for idx, (audio, label) in enumerate(tqdm(test_dataloader)):
                 audio = audio.to(args.device)
                 label = label.to(args.device)
+                label = label.view(label.shape[1], -1)
                 outputs = model(audio)
                 loss = model.loss(outputs, label)
                 test_epoch_loss.append(loss.item())
-                acc += torch.sum(torch.equal(outputs,label))
-                nums += label.size()[0]
+                # sp = torch.equal(outputs,label)
+                # acc += torch.sum(torch.equal(outputs,label))
+                # nums += label.size()[0]
             test_epochs_loss.append(np.average(test_epoch_loss))
-            test_acc.append(100.0*acc/nums)
+            # test_acc.append(100.0*acc/nums)
 
-            print("epoch = {}, test acc = {:.2f}%, loss = {}".format(epoch, 100 * acc / nums,
-                                                                      np.average(test_epoch_loss)))
+            print("epoch = {}, loss = {}".format(epoch, np.average(test_epoch_loss)))
 
     res = {
         "train_epochs_loss":train_epochs_loss,
         "test_epochs_loss":test_epochs_loss,
-        "train_acc":train_acc,
-        "test_acc":test_acc
+        # "train_acc":train_acc,
+        # "test_acc":test_acc
     }
     with open(res_path, 'w') as f:
         json.dump(res,f)
