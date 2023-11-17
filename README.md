@@ -2,9 +2,11 @@
 
 ## Environment
 
-pytorch >= 2.0
+pytorch-cpu >= 2.0
 
 scipy
+
+pandas
 
 ## audio2face
 
@@ -16,7 +18,7 @@ res--
 
 ​	--train0
 
-​	----dir: a lr = 0.0001 小样本训练 单一loss 训练描述
+​	----dir: a lr = 0.0001 小样本训练 单一loss: 训练描述
 
 ​	----checkpoint：训练模型权重
 
@@ -25,6 +27,12 @@ res--
 ​	----res.json:训练集loss和测试集loss的json文件，数组下标表述epoch轮数
 
 3D-ETF.zip是数据集，包含了许多音频文件和对应的参数
+
+文件链接：
+
+链接：https://pan.baidu.com/s/1iNCJ-dt_8PXa8eaGBWsY1g 
+提取码：virt 
+--来自百度网盘超级会员V4的分享
 
 
 
