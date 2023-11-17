@@ -2,33 +2,36 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 import torch.nn.functional as F
-from audio2face import NvidiaModel
+from audio2face import NvidiaModel, loss
 import os
 from tqdm import tqdm
 import json
+import random
+
 class Args:
-# class Args:
-#     def __init__(self):
-#         self.epochs = 51
-#         self.batch_size = 1
-#         self.lr = 0.001
-#         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-#         self.audio_path = "../../../dataset_HPC/audio"
-#         self.blendshape_path = "../../../HDTF/blendshape"
-#         self.checkpoint_saved_path = "../checkpoint"
-#         self.res_path = "../res/res.json"
-#
-# args = Args()
     def __init__(self):
-        self.epochs = 11
+        self.epochs = 201
         self.batch_size = 1
         self.lr = 0.001
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.audio_path = "../dataset/audio"
-        self.blendshape_path = "../../data/HDTF/blendshape"
+        self.audio_path = "../../../dataset_HPC/audio"
+        self.blendshape_path = "../../../HDTF/blendshape"
         self.checkpoint_saved_path = "../checkpoint"
         self.res_path = "../res/res.json"
+        self.temporal_pairs = 50
+
 args = Args()
+# class Args:
+#     def __init__(self):
+#         self.epochs = 11
+#         self.batch_size = 1
+#         self.lr = 0.001
+#         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#         self.audio_path = "../dataset/audio"
+#         self.blendshape_path = "../../data/HDTF/blendshape"
+#         self.checkpoint_saved_path = "../checkpoint"
+#         self.res_path = "../res/res.json"
+# args = Args()
 
 class Dataset_HDTF(Dataset):
     def __init__(self, audio_path, blendshape_path,flag='train'):
@@ -43,7 +46,7 @@ class Dataset_HDTF(Dataset):
         # 根据索引返回数据
         # data = self.preprocess(self.data[index]) # 如果需要预处理数据的话
         audio, label = self.data[index]
-        audio = audio[:label.shape[0]]
+        # audio = audio[audio.shape[0]-label.shape[0]:]
         # print("getitem audio_size: "+ str(audio.shape))
         # print("getitem audio_size: "+ str(label.shape))
         audio = torch.tensor(audio,dtype=torch.float)
@@ -59,21 +62,27 @@ class Dataset_HDTF(Dataset):
 
     # 如果不是直接传入数据data，这里定义一个加载数据的方法
     def __load_data__(self, audio_path, blendshape_path):
-        # cnt = 10
+        cnt = 6
         data = []
+        temporal_pairs = args.temporal_pairs
         for root, dirs, files in os.walk(audio_path):
             for file in files:
-                # cnt -= 1
-                # if cnt == 0:
-                #     break
+                cnt -= 1
+                if cnt == 0:
+                    break
                 wav_file = os.path.join(root, file)
                 blendshape_file = os.path.join(blendshape_path,file)
                 wav_data = np.load(wav_file)
                 blendshape_data = np.load(blendshape_file)
-                data.append((wav_data,blendshape_data))
+                for i in range(blendshape_data.shape[0]//temporal_pairs):
+                    w = wav_data[i*temporal_pairs:(i+1)*temporal_pairs]
+                    b = blendshape_data[i*temporal_pairs:(i+1)*temporal_pairs]
+                    data.append((w,b))
+                # data.append((wav_data,blendshape_data))
                 # print("load " + file)
                 # print("wavsize: " + str(wav_data.shape))
                 # print("blendshapesize: " + str(blendshape_data.shape))
+        random.shuffle(data)
 
         if self.flag == "train":
             return data[:int(len(data)*0.8)]
@@ -83,8 +92,6 @@ class Dataset_HDTF(Dataset):
     def preprocess(self, data):
         # 将data 做一些预处理
         pass
-
-
 
 def train(epochs,
           batch_size,
@@ -107,6 +114,7 @@ def train(epochs,
     # train_acc = []
     # test_acc = []
 
+    sheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=0.99,last_epoch=-1)
     for epoch in range(epochs):
         print("epoch: " + str(epoch))
         model.train()
@@ -117,20 +125,21 @@ def train(epochs,
             # print("train label:" + str(label.shape))
             audio = audio.to(args.device)
             label = label.to(args.device)
-            label = label.view(label.shape[1], -1)
+            label = torch.squeeze(label,0)
             outputs = model(audio)
             optimizer.zero_grad()
-            loss = model.loss(outputs,label)
+            mloss = loss(outputs,label)
             # print("loss: " + str(loss))
-            loss.backward()
+            mloss.backward()
             optimizer.step()
-            train_epoch_loss.append(loss.item())
+            sheduler.step()
+            train_epoch_loss.append(mloss.item())
             # sp = (outputs == label).sum()
             # acc += torch.sum(torch.eq(outputs,label))
             # nums += label.size()[0]*label.size()[1]
         train_epochs_loss.append(np.average(train_epoch_loss))
         # train_acc.append(100.0*acc/nums)
-        print("loss = {}".format(np.average(train_epoch_loss)))
+        print("train_loss = {}".format(np.average(train_epoch_loss)))
         if epoch % 10 == 0:
             it = epoch // 10
             dict_path = f"{checkpoint_save_path}/model_epochs_{it}.pth"
@@ -147,24 +156,26 @@ def train(epochs,
                 label = label.to(args.device)
                 label = label.view(label.shape[1], -1)
                 outputs = model(audio)
-                loss = model.loss(outputs, label)
-                test_epoch_loss.append(loss.item())
+                mloss = loss(outputs, label)
+                test_epoch_loss.append(mloss.item())
                 # sp = torch.equal(outputs,label)
                 # acc += torch.sum(torch.equal(outputs,label))
                 # nums += label.size()[0]
             test_epochs_loss.append(np.average(test_epoch_loss))
             # test_acc.append(100.0*acc/nums)
 
-            print("epoch = {}, loss = {}".format(epoch, np.average(test_epoch_loss)))
+            print("test_loss = {}".format(np.average(test_epoch_loss)))
 
-    res = {
-        "train_epochs_loss":train_epochs_loss,
-        "test_epochs_loss":test_epochs_loss,
-        # "train_acc":train_acc,
-        # "test_acc":test_acc
-    }
-    with open(res_path, 'w') as f:
-        json.dump(res,f)
+        res = {
+            "train_epochs_loss":train_epochs_loss,
+            "test_epochs_loss":test_epochs_loss,
+            # "train_acc":train_acc,
+            # "test_acc":test_acc
+        }
+        with open(res_path, 'w') as f:
+            json.dump(res,f)
+
+
 
 if __name__ == "__main__":
     model = NvidiaModel()

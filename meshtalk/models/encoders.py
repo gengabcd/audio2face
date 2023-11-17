@@ -31,6 +31,8 @@ class AudioEncoder(nn.Module):
     def forward(self,audio):
         B, T = audio.shape[0], audio.shape[1]
         x = self.melspec(audio).squeeze(1)
+        # x = self.melspec(audio)
+        print(x.shape)
         x = torch.log(x.clamp(min=1e-10,max=None))
         if T == 1:
             x = x.unsqueeze(1)

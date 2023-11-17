@@ -4,7 +4,7 @@ import scipy.io.wavfile as wavfile
 
 from ctypes import *
 
-project_dir = r'./'
+project_dir = './utils/'
 dll = cdll.LoadLibrary(os.path.join(project_dir, 'LPC.dll'))  # 加载 LPC.dll
 def audioProcess(wav_path):
     rate, signal = wavfile.read(wav_path)
