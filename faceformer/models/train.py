@@ -12,10 +12,10 @@ from faceformer import Faceformer, loss
 
 class Args:
     def __init__(self):
-        self.epochs = 10
+        self.epochs = 101
         self.batch_size = 1
         self.lr = 0.0001
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
         self.audio_path = "../../data/HDTF/audio"
         self.blendshape_path = "../../data/HDTF/blendshape"
         self.checkpoint_saved_path = "../checkpoint"
@@ -46,13 +46,13 @@ class Dataset_HDTF(Dataset):
 
     def __load_data__(self, audio_path, blendshape_path):
         processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
-        cnt = 6
+        # cnt = 6
         data = []
         for root, dirs, files in os.walk(audio_path):
             for file in files:
-                cnt -= 1
-                if cnt == 0:
-                    break
+                # cnt -= 1
+                # if cnt == 0:
+                #     break
                 wav_path = os.path.join(root, file)
                 bf = file
                 bf = bf.replace("wav","npy")
