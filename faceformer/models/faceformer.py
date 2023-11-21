@@ -5,7 +5,6 @@ import numpy as np
 import copy
 import math
 from wav2vec import Wav2Vec2Model
-
 # Temporal Bias, inspired by ALiBi: https://github.com/ofirpress/attention_with_linear_biases
 def init_biased_mask(n_head, max_seq_len, period):
     def get_slopes(n):
@@ -36,7 +35,8 @@ def enc_dec_mask(device, dataset, T, S):
     if dataset == "BIWI":
         for i in range(T):
             mask[i, i*2:i*2+2] = 0
-    elif dataset == "vocaset":
+    # elif dataset == "vocaset":
+    else:
         for i in range(T):
             mask[i, i] = 0
     return (mask==1).to(device=device)
@@ -63,9 +63,9 @@ class Faceformer(nn.Module):
     def __init__(self, args):
         super(Faceformer, self).__init__()
         """
+        batch_size = 1
         audio: (batch_size, raw_wav)
-        template: (batch_size, V*3)
-        vertice: (batch_size, seq_len, V*3)
+        vertice: (batch_size, seq_len, blendshape)
         """
         self.dataset = args.dataset
         self.audio_encoder = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
@@ -73,7 +73,7 @@ class Faceformer(nn.Module):
         self.audio_encoder.feature_extractor._freeze_parameters()
         self.audio_feature_map = nn.Linear(768, args.feature_dim)
         # motion encoder
-        self.vertice_map = nn.Linear(args.vertice_dim, args.feature_dim)
+        self.vertice_map = nn.Linear(args.blendshape, args.feature_dim)
         # periodic positional encoding 
         self.PPE = PeriodicPositionalEncoding(args.feature_dim, period = args.period)
         # temporal bias
@@ -81,84 +81,57 @@ class Faceformer(nn.Module):
         decoder_layer = nn.TransformerDecoderLayer(d_model=args.feature_dim, nhead=4, dim_feedforward=2*args.feature_dim, batch_first=True)        
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=1)
         # motion decoder
-        self.vertice_map_r = nn.Linear(args.feature_dim, args.vertice_dim)
+        self.vertice_map_r = nn.Linear(args.feature_dim, args.blendshape)
         # style embedding
-        self.obj_vector = nn.Linear(len(args.train_subjects.split()), args.feature_dim, bias=False)
+        self.obj_vector = nn.Linear(2, args.feature_dim, bias=False)
         self.device = args.device
         nn.init.constant_(self.vertice_map_r.weight, 0)
         nn.init.constant_(self.vertice_map_r.bias, 0)
 
-    def forward(self, audio, template, vertice, one_hot, criterion,teacher_forcing=True):
+    def forward(self, audio, one_hot, blendshape):
+        # print(audio.shape)
         # tgt_mask: :math:`(T, T)`.
         # memory_mask: :math:`(T, S)`.
-        template = template.unsqueeze(1) # (1,1, V*3)
+        frame_num = blendshape.shape[1]
+        # if frame_num%10 != 0:
+        #     frame_num += 1
         obj_embedding = self.obj_vector(one_hot)#(1, feature_dim)
-        frame_num = vertice.shape[1]
-        hidden_states = self.audio_encoder(audio, self.dataset, frame_num=frame_num).last_hidden_state
-        if self.dataset == "BIWI":
-            if hidden_states.shape[1]<frame_num*2:
-                vertice = vertice[:, :hidden_states.shape[1]//2]
-                frame_num = hidden_states.shape[1]//2
-        hidden_states = self.audio_feature_map(hidden_states)
-
-        if teacher_forcing:
-            vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
-            style_emb = vertice_emb  
-            vertice_input = torch.cat((template,vertice[:,:-1]), 1) # shift one position
-            vertice_input = vertice_input - template
-            vertice_input = self.vertice_map(vertice_input)
-            vertice_input = vertice_input + style_emb
-            vertice_input = self.PPE(vertice_input)
-            tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().to(device=self.device)
-            memory_mask = enc_dec_mask(self.device, self.dataset, vertice_input.shape[1], hidden_states.shape[1])
-            vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
-            vertice_out = self.vertice_map_r(vertice_out)
-        else:
-            for i in range(frame_num):
-                if i==0:
-                    vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
-                    style_emb = vertice_emb
-                    vertice_input = self.PPE(style_emb)
-                else:
-                    vertice_input = self.PPE(vertice_emb)
-                tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().to(device=self.device)
-                memory_mask = enc_dec_mask(self.device, self.dataset, vertice_input.shape[1], hidden_states.shape[1])
-                vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
-                vertice_out = self.vertice_map_r(vertice_out)
-                new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
-                new_output = new_output + style_emb
-                vertice_emb = torch.cat((vertice_emb, new_output), 1)
-
-        vertice_out = vertice_out + template
-        loss = criterion(vertice_out, vertice) # (batch, seq_len, V*3)
-        loss = torch.mean(loss)
-        return loss
-
-    def predict(self, audio, template, one_hot):
-        template = template.unsqueeze(1) # (1,1, V*3)
-        obj_embedding = self.obj_vector(one_hot)
-        hidden_states = self.audio_encoder(audio, self.dataset).last_hidden_state
-        if self.dataset == "BIWI":
-            frame_num = hidden_states.shape[1]//2
-        elif self.dataset == "vocaset":
-            frame_num = hidden_states.shape[1]
+        hidden_states = self.audio_encoder(audio,self.dataset, frame_num=frame_num).last_hidden_state
+        # frame_num = hidden_states.shape[1]
         hidden_states = self.audio_feature_map(hidden_states)
 
         for i in range(frame_num):
             if i==0:
                 vertice_emb = obj_embedding.unsqueeze(1) # (1,1,feature_dim)
                 style_emb = vertice_emb
-                vertice_input = self.PPE(style_emb)
+                blendshape_input = self.PPE(style_emb)
             else:
-                vertice_input = self.PPE(vertice_emb)
-
-            tgt_mask = self.biased_mask[:, :vertice_input.shape[1], :vertice_input.shape[1]].clone().detach().to(device=self.device)
-            memory_mask = enc_dec_mask(self.device, self.dataset, vertice_input.shape[1], hidden_states.shape[1])
-            vertice_out = self.transformer_decoder(vertice_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
-            vertice_out = self.vertice_map_r(vertice_out)
-            new_output = self.vertice_map(vertice_out[:,-1,:]).unsqueeze(1)
+                blendshape_input = self.PPE(vertice_emb)
+            tgt_mask = self.biased_mask[:, :blendshape_input.shape[1], :blendshape_input.shape[1]].clone().detach().to(device=self.device)
+            memory_mask = enc_dec_mask(self.device, self.dataset, blendshape_input.shape[1], hidden_states.shape[1])
+            blendshape_out = self.transformer_decoder(blendshape_input, hidden_states, tgt_mask=tgt_mask, memory_mask=memory_mask)
+            blendshape_out = self.vertice_map_r(blendshape_out)
+            new_output = self.vertice_map(blendshape_out[:,-1,:]).unsqueeze(1)
             new_output = new_output + style_emb
             vertice_emb = torch.cat((vertice_emb, new_output), 1)
 
-        vertice_out = vertice_out + template
-        return vertice_out
+        blendshape_out = blendshape_out
+        # loss = criterion(vertice_out, blendshape) # (batch, seq_len, V*3)
+        # loss = torch.mean(loss)
+        return blendshape_out
+
+def loss(output, label):
+    loss_function1 = torch.nn.MSELoss(reduction='mean')
+    loss_function2 = torch.nn.MSELoss(reduction='mean')
+    loss_position = loss_function1(output, label)
+    output_ = torch.diff(output, dim=1)
+    label_ = torch.diff(label, dim=1)
+    loss_motion = loss_function2(output_, label_)
+    # loss = loss_position + 2*loss_motion
+    loss_ = loss_position
+    return loss_
+# if __name__ == "__main__":
+#     args = Args()
+#
+#     pass
+

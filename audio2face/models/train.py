@@ -114,7 +114,7 @@ def train(epochs,
     # train_acc = []
     # test_acc = []
 
-    sheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=0.99,last_epoch=-1)
+    # sheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=0.99,last_epoch=-1)
     for epoch in range(epochs):
         print("epoch: " + str(epoch))
         model.train()
@@ -132,7 +132,7 @@ def train(epochs,
             # print("loss: " + str(loss))
             mloss.backward()
             optimizer.step()
-            sheduler.step()
+            # sheduler.step()
             train_epoch_loss.append(mloss.item())
             # sp = (outputs == label).sum()
             # acc += torch.sum(torch.eq(outputs,label))

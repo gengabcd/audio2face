@@ -142,3 +142,7 @@ data
 audio2face/dataset
 
 audio2face/checkpoint
+
+faceformer/checkpoint
+
+faceformer/npy
